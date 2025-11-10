@@ -17,12 +17,12 @@ def split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
     return re.split(pattern, text)
 
 
-def to_utf8_bytes_tuple(text: str) -> tuple[bytes, ...]:
+def to_utf8_code_points_tuple(text: str) -> tuple[int, ...]:
     """
-    Converts the text to tuple of bytes (utf-8 encoding). We use utf-8
+    Converts the text to tuple of code points (utf-8 encoding). We use utf-8
     because:
-        (1) It ensures everything gets mapped to a sequence of bytes where
-            each byte is between 0-255
+        (1) It ensures everything gets mapped to a sequence of code points where
+            each code point is between 0-255
         (2) It's the most compressed way to represent any character. utf-16 and 
             utf-32 take more bytes to represent the same character.
     """
@@ -33,27 +33,31 @@ def to_utf8_bytes_tuple(text: str) -> tuple[bytes, ...]:
     # For example, the character '≈' is represented as bytes [\xe2,\x89,\x88], but
     # the above code would return the tuple(\xe2\x89\x88, ) meaning xe2 and x89 
     # could never be merged.
-    return tuple([bytes([b]) for b in text.encode("utf-8")])
+
+    # Similarly we decided to represent the bytes as their integer code points since
+    # it performed faster as evidenced by cProfile
+    # return tuple([bytes([b]) for b in text.encode("utf-8")])
+    return tuple(text.encode("utf-8"))
 
 
-def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
+def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[int, ...], int]:
     """
     Splits the text into pretokens, ensuring we never split a special token, 
     and then returns the frequency of each pretoken which is represents as a tuple
-    of bytes.
+    of code points.
     """
     # Pretokenize pattern.
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     split_texts = split_on_special_tokens(text, special_tokens)
 
-    pretoken_counts = defaultdict(int)  # type: Dict[tuple[bytes, ...], int]
+    pretoken_counts = defaultdict(int)  # type: Dict[tuple[int, ...], int]
     for split_text in split_texts:
         iterable = re.finditer(PAT, split_text)
         for match in iterable:
             pretoken = match.group()
-            bytes_tuple = to_utf8_bytes_tuple(pretoken)
-            pretoken_counts[bytes_tuple] += 1
+            code_points_tuple = to_utf8_code_points_tuple(pretoken)
+            pretoken_counts[code_points_tuple] += 1
 
     return pretoken_counts
 
@@ -63,7 +67,7 @@ def read_chunk_and_pretokenize(
     start: int,
     end: int,
     special_tokens: list[str]
-) -> dict[tuple[bytes, ...], int]:
+) -> dict[tuple[int, ...], int]:
     """
     Reads the file between the start and end (exclusive) index and 
     returns the frequency of each pretoken in that chunk.
