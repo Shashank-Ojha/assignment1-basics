@@ -5,10 +5,15 @@ from collections import defaultdict
 import multiprocessing
 
 SPECIAL_TOKENS = ["<|beginoftext|>", "<|endoftext|>"]
+
+INITIAL_VOCAB_SIZE = 256
 NUM_WORKERS = 20
 
-
-def split_on_special_tokens(text, special_tokens) -> list[str]:
+def split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
+    """
+    Splits the text on any of the speical tokens passed in. Returns the list
+    of strings after the split.
+    """
     # Escape each special token
     escaped = [re.escape(tok) for tok in special_tokens]
 
@@ -18,30 +23,72 @@ def split_on_special_tokens(text, special_tokens) -> list[str]:
     return re.split(pattern, text)
 
 
-def pretokenize(text, special_tokens):
+def to_utf8_bytes_tuple(text: str) -> tuple[bytes, ...]:
+    """
+    Converts the text to tuple of bytes (utf-8 encoding). We use utf-8
+    because:
+        (1) It ensures everything gets mapped to a sequence of bytes where
+            each byte is between 0-255
+        (2) It's the most compressed way to represent any character. utf-16 and 
+            utf-32 take more bytes to represent the same character.
+    """
+    # Note that the original code below was wrong. 
+    #   return tuple([bytes(ch, "utf-8") for ch in text])
+    # The issue was that characters that were represented at multiple bytes would
+    # turn into one merged element in the tuple, so we couldn't merge those subbytes
+    # For example, the character '≈' is represented as bytes [\xe2,\x89,\x88], but
+    # the above code would return the tuple(\xe2\x89\x88, ) meaning xe2 and x89 
+    # could never be merged.
+    return tuple([bytes([b]) for b in text.encode("utf-8")])
+
+
+def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
+    """
+    Splits the text into pretokens, ensuring we never split a special token, 
+    and then returns the frequency of each pretoken which is represents as a tuple
+    of bytes.
+    """
     # Pretokenize pattern.
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
     split_texts = split_on_special_tokens(text, special_tokens)
 
-    pretoken_counts = defaultdict(int)  # type: Dict[tuple[bytes], int]
+    pretoken_counts = defaultdict(int)  # type: Dict[tuple[bytes, ...], int]
     for split_text in split_texts:
         iterable = re.finditer(PAT, split_text)
         for match in iterable:
-            bytes_tuple = tuple([bytes(ch, "utf-8") for ch in match.group()])
+            pretoken = match.group()
+            bytes_tuple = to_utf8_bytes_tuple(pretoken)
             pretoken_counts[bytes_tuple] += 1
 
     return pretoken_counts
 
 
-def read_chunk_and_pretokenize(filename, start, end, special_tokens):
+def read_chunk_and_pretokenize(
+    filename: str, 
+    start: int,
+    end: int,
+    special_tokens: list[str]
+) -> dict[tuple[bytes, ...], int]:
+    """
+    Reads the file between the start and end (exclusive) index and 
+    returns the frequency of each pretoken in that chunk.
+    """
     with open(filename, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
         return pretokenize(chunk, special_tokens)
 
 
-def get_pretoken_counts(filename, special_tokens) -> dict[tuple[bytes], int]:
+def get_pretoken_counts(filename, special_tokens) -> dict[tuple[bytes, ...], int]:
+    """ 
+    Pretokenizes all the text in the file and returns the frequency of each
+    pretoken.
+
+    Note that each pretoken is represented as a tuple of bytes.
+
+    @arg special_tokens - Used to ensure we never split the special tokens.
+    """
     pretoken_counts = defaultdict(int)
     with open(filename, "rb") as f:
         boundaries = find_chunk_boundaries(f, NUM_WORKERS, b"<|endoftext|>")
@@ -54,7 +101,8 @@ def get_pretoken_counts(filename, special_tokens) -> dict[tuple[bytes], int]:
 
     # Merge all the counts
     for counts in pretoken_counts_per_worker:
-        pretoken_counts.update(counts)
+        for bytes_tuple, count in counts.items():
+            pretoken_counts[bytes_tuple] += count
 
     return pretoken_counts
 
@@ -82,9 +130,9 @@ def find_chunk_boundaries(
     chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
     chunk_boundaries[-1] = file_size
 
-    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time (2^12)
+    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
 
-    for bi in range(1, len(chunk_boundaries) - 1):  # if num_chunks = 4, this will loop through 1, 2, 3,
+    for bi in range(1, len(chunk_boundaries) - 1):
         initial_position = chunk_boundaries[bi]
         file.seek(initial_position)  # Start at boundary guess
         while True:
@@ -106,9 +154,10 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
-def get_counts(pretokens_counts: dict[tuple[bytes], int]) -> dict[tuple[bytes, bytes], int]:
+def get_pair_counts(pretokens_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
     """
-    Get aggregate counts from all preotkens
+    Get frequency of every byte pair. Only pairs within a pretoken are considered. Pairs between
+    pretokens are not considered. Similarly, special tokens are also not considered.
     """
     bp_counts = defaultdict(int)  # (bytes, bytes) -> count
 
@@ -119,8 +168,12 @@ def get_counts(pretokens_counts: dict[tuple[bytes], int]) -> dict[tuple[bytes, b
     return bp_counts
 
 
-def merge_bytes_in_pretokens(pretokens_counts, to_merge_pair, new_bytes_token):
-    new_pretoken_counts = {}
+def merge_bytes_in_pretokens(pretokens_counts: dict[tuple[bytes, ...], int], to_merge_pair: tuple[bytes, bytes], new_bytes_token: bytes) -> dict[tuple[bytes, ...], int]:
+    """
+    Given pretoken counts (tuple of bytes -> counts), returns a new
+    version where the tuple of bytes keys merge the to_merge_pair to the new_bytes_token.
+    """
+    new_pretoken_counts = defaultdict(int)
     for bytes_tuple, count in pretokens_counts.items():
         i = 0
         new_bytes_list = []
@@ -136,35 +189,31 @@ def merge_bytes_in_pretokens(pretokens_counts, to_merge_pair, new_bytes_token):
                 new_bytes_list.append(bytes_tuple[i])
                 i += 1
 
-        new_pretoken_counts[tuple(new_bytes_list)] = count
+        new_pretoken_counts[tuple(new_bytes_list)] += count
 
     return new_pretoken_counts
 
 
-def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str]):
+def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str]) -> tuple[dict[int, tuple[bytes, ...]], list[tuple[bytes, bytes]]]:
     """
     Returns tuple of:
         vocab: dict[int, bytes]
         merges: list[tuple[bytes, bytes]]
     """
-    DEFAULT_VOCAB_SIZE = 256
-
-    assert vocab_size >= DEFAULT_VOCAB_SIZE, (
-        f"Vocab size must be at least {DEFAULT_VOCAB_SIZE} to account for all ascii characters"
+    assert vocab_size >= INITIAL_VOCAB_SIZE, (
+        f"Vocab size must be at least {INITIAL_VOCAB_SIZE} to account for all ascii characters"
     )
 
-    # Make the first DEFAULT_VOCAB_SIZE vocab entries
-    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(DEFAULT_VOCAB_SIZE)}  # index -> bytes
-    merges = []
-
-    num_special_tokens = len(special_tokens)
-    num_merges = vocab_size - DEFAULT_VOCAB_SIZE - num_special_tokens
+    # Make the first INITIAL_VOCAB_SIZE vocab entries
+    vocab: dict[int, bytes] = {x: bytes([x]) for x in range(INITIAL_VOCAB_SIZE)}  # index -> bytes
 
     pretokens_counts = get_pretoken_counts(input_path, special_tokens)  # tuple(bytes) -> int
 
+    merges = []
+    num_merges = vocab_size - INITIAL_VOCAB_SIZE - len(special_tokens)
     for i in range(num_merges):
         # (1) Get counts
-        counts = get_counts(pretokens_counts)
+        counts = get_pair_counts(pretokens_counts)
 
         # (2) Find the highest frequency counts (resolve ties)
         max_count = 0
@@ -179,8 +228,7 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
         # (3) Add to vocab. Key is len(vocab) and value is bytes
         new_bytes_token = to_merge_pair[0] + to_merge_pair[1]
 
-        new_index = len(vocab)
-        vocab[new_index] = new_bytes_token
+        vocab[len(vocab)] = new_bytes_token
         merges.append(to_merge_pair)
 
         pretokens_counts = merge_bytes_in_pretokens(pretokens_counts, to_merge_pair, new_bytes_token)
@@ -194,5 +242,4 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
 if __name__ == "__main__":
     tiny_stores_dataset = "data/TinyStoriesV2-GPT4-valid.txt"
     VOCAB_SIZE = 260
-    # read_file("data/TinyStoriesV2-GPT4-valid.txt")
     vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
