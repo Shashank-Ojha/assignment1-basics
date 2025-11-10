@@ -48,3 +48,10 @@ gunzip owt_valid.txt.gz
 cd ..
 ```
 
+
+## Profiling
+
+To use cProfile, you can follow this example:
+
+`uv run python3 -m cProfile -o profile_output.prof -m cs336_basics.bpe_trainer`
+`snakeviz profile_output.prof`

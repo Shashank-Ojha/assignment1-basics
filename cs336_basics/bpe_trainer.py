@@ -4,81 +4,12 @@ import regex as re
 from collections import defaultdict
 import multiprocessing
 
+from cs336_basics.pretokenizer import read_chunk_and_pretokenize
+
 SPECIAL_TOKENS = ["<|beginoftext|>", "<|endoftext|>"]
 
 INITIAL_VOCAB_SIZE = 256
 NUM_WORKERS = 20
-
-def split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
-    """
-    Splits the text on any of the speical tokens passed in. Returns the list
-    of strings after the split.
-    """
-    # Escape each special token
-    escaped = [re.escape(tok) for tok in special_tokens]
-
-    # Join them with '|' to mean “match any of these”
-    pattern = "|".join(escaped)
-
-    return re.split(pattern, text)
-
-
-def to_utf8_bytes_tuple(text: str) -> tuple[bytes, ...]:
-    """
-    Converts the text to tuple of bytes (utf-8 encoding). We use utf-8
-    because:
-        (1) It ensures everything gets mapped to a sequence of bytes where
-            each byte is between 0-255
-        (2) It's the most compressed way to represent any character. utf-16 and 
-            utf-32 take more bytes to represent the same character.
-    """
-    # Note that the original code below was wrong. 
-    #   return tuple([bytes(ch, "utf-8") for ch in text])
-    # The issue was that characters that were represented at multiple bytes would
-    # turn into one merged element in the tuple, so we couldn't merge those subbytes
-    # For example, the character '≈' is represented as bytes [\xe2,\x89,\x88], but
-    # the above code would return the tuple(\xe2\x89\x88, ) meaning xe2 and x89 
-    # could never be merged.
-    return tuple([bytes([b]) for b in text.encode("utf-8")])
-
-
-def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[bytes, ...], int]:
-    """
-    Splits the text into pretokens, ensuring we never split a special token, 
-    and then returns the frequency of each pretoken which is represents as a tuple
-    of bytes.
-    """
-    # Pretokenize pattern.
-    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-
-    split_texts = split_on_special_tokens(text, special_tokens)
-
-    pretoken_counts = defaultdict(int)  # type: Dict[tuple[bytes, ...], int]
-    for split_text in split_texts:
-        iterable = re.finditer(PAT, split_text)
-        for match in iterable:
-            pretoken = match.group()
-            bytes_tuple = to_utf8_bytes_tuple(pretoken)
-            pretoken_counts[bytes_tuple] += 1
-
-    return pretoken_counts
-
-
-def read_chunk_and_pretokenize(
-    filename: str, 
-    start: int,
-    end: int,
-    special_tokens: list[str]
-) -> dict[tuple[bytes, ...], int]:
-    """
-    Reads the file between the start and end (exclusive) index and 
-    returns the frequency of each pretoken in that chunk.
-    """
-    with open(filename, "rb") as f:
-        f.seek(start)
-        chunk = f.read(end - start).decode("utf-8", errors="ignore")
-        return pretokenize(chunk, special_tokens)
-
 
 def get_pretoken_counts(filename, special_tokens) -> dict[tuple[bytes, ...], int]:
     """ 
@@ -238,8 +169,11 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
 
     return vocab, merges
 
+def main():
+    tiny_stores_dataset = "data/swift.txt"
+    VOCAB_SIZE = 500
+    vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
 
 if __name__ == "__main__":
-    tiny_stores_dataset = "data/TinyStoriesV2-GPT4-valid.txt"
-    VOCAB_SIZE = 260
-    vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
+    # tiny_stores_dataset = "data/TinyStoriesV2-GPT4-valid.txt"
+    main()
