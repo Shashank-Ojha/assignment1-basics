@@ -76,3 +76,50 @@ def read_chunk_and_pretokenize(
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
         return pretokenize(chunk, special_tokens)
+
+
+# def merge_code_points_in_pretokens_helper(worker_id, num_workers, pretokens_counts, to_merge_pair, new_code_point):
+#     worker_pretoken_counts = defaultdict(int)
+#     idx = worker_id
+
+#     code_point_tuple_keys = list(pretokens_counts.keys())
+#     while idx < len(code_point_tuple_keys):
+#         code_points_tuple = code_point_tuple_keys[idx]
+#         count = pretokens_counts[code_points_tuple]
+
+#         i = 0
+#         new_code_points_list = []
+#         while i < len(code_points_tuple):
+#             if (
+#                 i + 1 < len(code_points_tuple)
+#                 and code_points_tuple[i] == to_merge_pair[0]
+#                 and code_points_tuple[i + 1] == to_merge_pair[1]
+#             ):
+#                 new_code_points_list.append(new_code_point)
+#                 i += 2
+#             else:
+#                 new_code_points_list.append(code_points_tuple[i])
+#                 i += 1
+
+#         worker_pretoken_counts[tuple(new_code_points_list)] += count
+
+#         idx += num_workers
+
+#     return worker_pretoken_counts
+
+def merge_code_points_in_pretokens_helper(code_points_tuple, count, to_merge_pair, new_code_point):
+    i = 0
+    new_code_points_list = []
+    while i < len(code_points_tuple):
+        if (
+            i + 1 < len(code_points_tuple)
+            and code_points_tuple[i] == to_merge_pair[0]
+            and code_points_tuple[i + 1] == to_merge_pair[1]
+        ):
+            new_code_points_list.append(new_code_point)
+            i += 2
+        else:
+            new_code_points_list.append(code_points_tuple[i])
+            i += 1
+
+    return tuple(new_code_points_list), count
