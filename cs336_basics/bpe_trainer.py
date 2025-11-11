@@ -4,10 +4,12 @@ import regex as re
 from collections import defaultdict
 import multiprocessing
 
-from cs336_basics.pretokenizer import read_chunk_and_pretokenize, SPECIAL_TOKENS
+from cs336_basics.bpe_trainer_helpers import read_chunk_and_pretokenize, SPECIAL_TOKENS, merge_code_points_in_pretokens_helper
 
 INITIAL_VOCAB_SIZE = 256
-NUM_WORKERS = 20
+
+NUM_PROCESSES = os.cpu_count()
+NUM_THREADS = min(32, 4 * os.cpu_count())
 
 def get_pretoken_counts(filename, special_tokens) -> dict[tuple[int, ...], int]:
     """ 
@@ -20,12 +22,12 @@ def get_pretoken_counts(filename, special_tokens) -> dict[tuple[int, ...], int]:
     """
     pretoken_counts = defaultdict(int)
     with open(filename, "rb") as f:
-        boundaries = find_chunk_boundaries(f, NUM_WORKERS, b"<|endoftext|>")
+        boundaries = find_chunk_boundaries(f, NUM_PROCESSES, b"<|endoftext|>")
 
     # The following is a serial implementation, but you can parallelize this
     # by sending each start/end pair to a set of processes.
     args = [(filename, start, end, special_tokens) for start, end in zip(boundaries[:-1], boundaries[1:])]
-    with multiprocessing.Pool(NUM_WORKERS) as p:
+    with multiprocessing.Pool(NUM_PROCESSES) as p:
         pretoken_counts_per_worker = p.starmap(read_chunk_and_pretokenize, args)
 
     # Merge all the counts
@@ -83,6 +85,7 @@ def find_chunk_boundaries(
     return sorted(set(chunk_boundaries))
 
 
+# @TODO, use threads to make this faster. It's a huge bottle neck in the code right now.
 def get_pair_counts(pretokens_counts: dict[tuple[int, ...], int]) -> dict[tuple[int, int], int]:
     """
     Get frequency of every code point pair. Only pairs within a pretoken are considered. Pairs between
@@ -102,23 +105,22 @@ def merge_code_points_in_pretokens(pretokens_counts: dict[tuple[int, ...], int],
     Given pretoken counts (tuple of code points -> counts), returns a new
     version where the tuple of code points keys merge the to_merge_pair to the new_code_point.
     """
-    new_pretoken_counts = defaultdict(int)
-    for code_points_tuple, count in pretokens_counts.items():
-        i = 0
-        new_code_points_list = []
-        while i < len(code_points_tuple):
-            if (
-                i + 1 < len(code_points_tuple)
-                and code_points_tuple[i] == to_merge_pair[0]
-                and code_points_tuple[i + 1] == to_merge_pair[1]
-            ):
-                new_code_points_list.append(new_code_point)
-                i += 2
-            else:
-                new_code_points_list.append(code_points_tuple[i])
-                i += 1
+    # Case on the size of pretokens. For a small amount, adding threads just adds too much overhead
+    # which fails the test cases.
+    if len(pretokens_counts) < 5000:
+        num_threads = 1
+    else:
+        num_threads = NUM_THREADS
 
-        new_pretoken_counts[tuple(new_code_points_list)] += count
+    new_pretoken_counts = defaultdict(int)
+
+    args = [(code_points_tuple, count, to_merge_pair, new_code_point) for code_points_tuple, count in pretokens_counts.items()]
+    with multiprocessing.pool.ThreadPool(num_threads) as p:
+        pretoken_counts_after_merge = p.starmap(merge_code_points_in_pretokens_helper, args)
+    
+    # Merge all the counts
+    for new_code_points_tuple, count in pretoken_counts_after_merge:
+        new_pretoken_counts[new_code_points_tuple] += count
 
     return new_pretoken_counts
 
@@ -177,7 +179,7 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
 
 def main():
     # tiny_stores_dataset = "data/swift.txt"
-    tiny_stores_dataset = "data/TinyStoriesV2-GPT4-valid.txt"
+    tiny_stores_dataset = "data/TinyStoriesV2-GPT4-train.txt"
     VOCAB_SIZE = 1000
     vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
 
