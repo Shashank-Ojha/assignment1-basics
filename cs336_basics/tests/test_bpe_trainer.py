@@ -1,6 +1,6 @@
 import pytest
 
-from cs336_basics.bpe_trainer import split_on_special_tokens
+from cs336_basics.tokenization.bpe_trainer import split_on_special_tokens
 
 def test_split_on_special_tokens():
     text = "[Doc 1]<|endoftext|>[Doc 2]"
