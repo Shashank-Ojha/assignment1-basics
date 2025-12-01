@@ -1,14 +1,12 @@
 import os
-from typing import Tuple, Dict
-import regex as re
 from collections import defaultdict
 import multiprocessing
 
 from cs336_basics.tokenization.bpe_trainer_helpers import (
-    read_chunk_and_pretokenize, 
-    SPECIAL_TOKENS, 
-    merge_code_points_in_pretokens_helper, 
-    find_chunk_boundaries
+    read_chunk_and_pretokenize,
+    SPECIAL_TOKENS,
+    merge_code_points_in_pretokens_helper,
+    find_chunk_boundaries,
 )
 
 INITIAL_VOCAB_SIZE = 256
@@ -16,8 +14,9 @@ INITIAL_VOCAB_SIZE = 256
 NUM_PROCESSES = os.cpu_count()
 NUM_THREADS = min(32, 4 * os.cpu_count())
 
+
 def get_pretoken_counts(filename, special_tokens) -> dict[tuple[int, ...], int]:
-    """ 
+    """
     Pretokenizes all the text in the file and returns the frequency of each
     pretoken.
 
@@ -58,7 +57,9 @@ def get_pair_counts(pretokens_counts: dict[tuple[int, ...], int]) -> dict[tuple[
     return pair_counts
 
 
-def merge_code_points_in_pretokens(pretokens_counts: dict[tuple[int, ...], int], to_merge_pair: tuple[int, int], new_code_point: int) -> dict[tuple[int, ...], int]:
+def merge_code_points_in_pretokens(
+    pretokens_counts: dict[tuple[int, ...], int], to_merge_pair: tuple[int, int], new_code_point: int
+) -> dict[tuple[int, ...], int]:
     """
     Given pretoken counts (tuple of code points -> counts), returns a new
     version where the tuple of code points keys merge the to_merge_pair to the new_code_point.
@@ -72,25 +73,33 @@ def merge_code_points_in_pretokens(pretokens_counts: dict[tuple[int, ...], int],
 
     new_pretoken_counts = defaultdict(int)
 
-    args = [(code_points_tuple, count, to_merge_pair, new_code_point) for code_points_tuple, count in pretokens_counts.items()]
+    args = [
+        (code_points_tuple, count, to_merge_pair, new_code_point)
+        for code_points_tuple, count in pretokens_counts.items()
+    ]
     with multiprocessing.pool.ThreadPool(num_threads) as p:
         pretoken_counts_after_merge = p.starmap(merge_code_points_in_pretokens_helper, args)
-    
+
     # Merge all the counts
     for new_code_points_tuple, count in pretoken_counts_after_merge:
         new_pretoken_counts[new_code_points_tuple] += count
 
     return new_pretoken_counts
 
+
 def convert_to_byte_space(vocab, byte_pair):
     return (vocab[byte_pair[0]], vocab[byte_pair[1]])
+
 
 def is_lexigraphically_greater(vocab, lht, rht):
     lht_byte_pair = convert_to_byte_space(vocab, lht)
     rht_byte_pair = convert_to_byte_space(vocab, rht)
     return lht_byte_pair > rht_byte_pair
 
-def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str]) -> tuple[dict[int, tuple[bytes, ...]], list[tuple[bytes, bytes]]]:
+
+def train_tokenizer(
+    input_path: str, vocab_size: int, special_tokens: list[str]
+) -> tuple[dict[int, tuple[bytes, ...]], list[tuple[bytes, bytes]]]:
     """
     Returns tuple of:
         vocab: dict[int, bytes]
@@ -115,7 +124,11 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
         max_count = 0
         to_merge_pair = None
         for code_point_pair, count in counts.items():
-            if (to_merge_pair is None) or (count > max_count) or (count == max_count and is_lexigraphically_greater(vocab, code_point_pair, to_merge_pair)):
+            if (
+                (to_merge_pair is None)
+                or (count > max_count)
+                or (count == max_count and is_lexigraphically_greater(vocab, code_point_pair, to_merge_pair))
+            ):
                 to_merge_pair = code_point_pair
                 max_count = count
 
@@ -135,11 +148,13 @@ def train_tokenizer(input_path: str, vocab_size: int, special_tokens: list[str])
 
     return vocab, merges
 
+
 def main():
     # tiny_stores_dataset = "data/swift.txt"
     tiny_stores_dataset = "data/TinyStoriesV2-GPT4-train.txt"
-    VOCAB_SIZE = 1000
+    VOCAB_SIZE = 10000
     vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
+
 
 if __name__ == "__main__":
     main()

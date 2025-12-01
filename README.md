@@ -53,5 +53,5 @@ cd ..
 
 To use cProfile, you can follow this example:
 
-`uv run python3 -m cProfile -o profile_output.prof -m cs336_basics.bpe_trainer`
+`uv run python3 -m cProfile -o profile_output.prof -m cs336_basics.tokenization.bpe_trainer`
 `snakeviz profile_output.prof`
