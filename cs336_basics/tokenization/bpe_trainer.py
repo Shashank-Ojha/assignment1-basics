@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 import multiprocessing
+import heapq
 from cs336_basics.tokenization.bpe_trainer_helpers import (
     read_chunk_and_pretokenize,
     SPECIAL_TOKENS,
@@ -67,6 +68,9 @@ def merge_code_points_in_pretokens(
     pair_infos,
     to_merge_pair: tuple[int, int],
     new_code_point: int,
+    vocab,
+    heap,
+    pair2node,
 ) -> dict[tuple[int, ...], int]:
     """
     Given pretoken counts (tuple of code points -> counts), returns a new
@@ -74,12 +78,15 @@ def merge_code_points_in_pretokens(
     """
     affected_tuples = list(pair_infos[to_merge_pair].associated_code_point_tuples.keys())
 
+    modified_pairs = set()
+
     for code_points_tuple in affected_tuples:
         original_tuple_count = pretoken_counts[code_points_tuple]
         del pretoken_counts[code_points_tuple]
 
         # (1) First go through original pairs and update pair infos
         for b1, b2 in zip(code_points_tuple, code_points_tuple[1:]):
+            modified_pairs.add((b1, b2))
             info = pair_infos[(b1, b2)]
             info.count -= original_tuple_count
             if info.count == 0:
@@ -108,12 +115,25 @@ def merge_code_points_in_pretokens(
         # (3) Finally go through new pairs and update pair infos
         new_code_points_tuple = tuple(new_code_points_list)
         for b1, b2 in zip(new_code_points_tuple, new_code_points_tuple[1:]):
+            modified_pairs.add((b1, b2))
             info = pair_infos[(b1, b2)]
             info.count += original_tuple_count
             info.associated_code_point_tuples[new_code_points_tuple] += 1
 
         # Update pretokencounts
         pretoken_counts[new_code_points_tuple] = original_tuple_count
+
+    for b1, b2 in modified_pairs:
+        # Mark old node as dead
+        if (b1, b2) in pair2node:
+            node = pair2node[(b1, b2)]
+            node.is_dead = True
+
+        # Add new node
+        count = pair_infos[(b1, b2)].count
+        node = Node(count, (b1, b2), convert_to_byte_space(vocab, (b1, b2)))
+        heapq.heappush(heap, node)
+        pair2node[(b1, b2)] = node
 
     # These datastructures get modified in place so this isn't necessary, but
     # returning them makes it clearer from the caller side that they've changed.
@@ -130,20 +150,42 @@ def is_lexigraphically_greater(vocab, lht, rht):
     return lht_byte_pair > rht_byte_pair
 
 
-def find_max_pair(vocab, pair_infos):
-    max_count = 0
-    to_merge_pair = None
-    for code_point_pair, info in pair_infos.items():
-        if (
-            (to_merge_pair is None)
-            or (info.count > max_count)
-            or (info.count == max_count and is_lexigraphically_greater(vocab, code_point_pair, to_merge_pair))
-        ):
-            to_merge_pair = code_point_pair
-            max_count = info.count
+class Node:
+    def __init__(self, pair_count, code_point_pair, byte_pair):
+        self.pair_count = pair_count
+        self.code_point_pair = code_point_pair
+        self.byte_pair = byte_pair
+        self.is_dead = False
 
-    assert to_merge_pair is not None
-    return to_merge_pair
+    def __lt__(self, other):
+        # This function defines the heap ordering. The heap orders from "smallest" to "largest".
+        # In otherwords, this function should identify if self is higher priority.
+        return (self.pair_count, self.byte_pair) > (other.pair_count, other.byte_pair)
+
+
+def create_pair_ordering(vocab, pair_infos):
+    heap = []
+    pair2node = {}
+
+    for code_point_pair, info in pair_infos.items():
+        node = Node(info.count, code_point_pair, convert_to_byte_space(vocab, code_point_pair))
+        heapq.heappush(heap, node)
+        pair2node[code_point_pair] = node
+
+    return heap, pair2node
+
+
+def find_max_pair(heap):
+    while heap:
+        node = heapq.heappop(heap)
+
+        if node.is_dead:
+            continue
+
+        break
+
+    assert node is not None
+    return node.code_point_pair
 
 
 def train_tokenizer(
@@ -161,14 +203,16 @@ def train_tokenizer(
     # Make the first INITIAL_VOCAB_SIZE vocab entries
     vocab: dict[int, bytes] = {x: bytes([x]) for x in range(INITIAL_VOCAB_SIZE)}  # code point -> bytes
 
+    # State. All these variables need to be maintained each loop iteration.
     pretoken_counts = get_pretoken_counts(input_path, special_tokens)  # tuple(int, ...) -> int
     pair_infos = get_pair_counts(pretoken_counts)
+    heap, pair2node = create_pair_ordering(vocab, pair_infos)
 
     merges = []
     num_merges = vocab_size - INITIAL_VOCAB_SIZE - len(special_tokens)
     for i in range(num_merges):
         # (1) Find the highest frequency counts (resolve ties)
-        to_merge_pair = find_max_pair(vocab, pair_infos)
+        to_merge_pair = find_max_pair(heap)
 
         # (2) Add to vocab.
         new_bytes_token = vocab[to_merge_pair[0]] + vocab[to_merge_pair[1]]
@@ -183,6 +227,9 @@ def train_tokenizer(
             pair_infos,
             to_merge_pair,
             new_code_point,
+            vocab,
+            heap,
+            pair2node,
         )
 
     for special_token in special_tokens:
