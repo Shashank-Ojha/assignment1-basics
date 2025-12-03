@@ -54,6 +54,7 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
+
 def split_on_special_tokens(text: str, special_tokens: list[str]) -> list[str]:
     """
     Splits the text on any of the speical tokens passed in. Returns the list
@@ -74,15 +75,15 @@ def to_utf8_code_points_tuple(text: str) -> tuple[int, ...]:
     because:
         (1) It ensures everything gets mapped to a sequence of code points where
             each code point is between 0-255
-        (2) It's the most compressed way to represent any character. utf-16 and 
+        (2) It's the most compressed way to represent any character. utf-16 and
             utf-32 take more bytes to represent the same character.
     """
-    # Note that the original code below was wrong. 
+    # Note that the original code below was wrong.
     #   return tuple([bytes(ch, "utf-8") for ch in text])
     # The issue was that characters that were represented at multiple bytes would
     # turn into one merged element in the tuple, so we couldn't merge those subbytes
     # For example, the character '≈' is represented as bytes [\xe2,\x89,\x88], but
-    # the above code would return the tuple(\xe2\x89\x88, ) meaning xe2 and x89 
+    # the above code would return the tuple(\xe2\x89\x88, ) meaning xe2 and x89
     # could never be merged.
 
     # Similarly we decided to represent the bytes as their integer code points since
@@ -93,7 +94,7 @@ def to_utf8_code_points_tuple(text: str) -> tuple[int, ...]:
 
 def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[int, ...], int]:
     """
-    Splits the text into pretokens, ensuring we never split a special token, 
+    Splits the text into pretokens, ensuring we never split a special token,
     and then returns the frequency of each pretoken which is represents as a tuple
     of code points.
     """
@@ -111,34 +112,13 @@ def pretokenize(text: str, special_tokens: list[str]) -> dict[tuple[int, ...], i
 
 
 def read_chunk_and_pretokenize(
-    filename: str, 
-    start: int,
-    end: int,
-    special_tokens: list[str]
+    filename: str, start: int, end: int, special_tokens: list[str]
 ) -> dict[tuple[int, ...], int]:
     """
-    Reads the file between the start and end (exclusive) index and 
+    Reads the file between the start and end (exclusive) index and
     returns the frequency of each pretoken in that chunk.
     """
     with open(filename, "rb") as f:
         f.seek(start)
         chunk = f.read(end - start).decode("utf-8", errors="ignore")
         return pretokenize(chunk, special_tokens)
-
-
-def merge_code_points_in_pretokens_helper(code_points_tuple, count, to_merge_pair, new_code_point):
-    i = 0
-    new_code_points_list = []
-    while i < len(code_points_tuple):
-        if (
-            i + 1 < len(code_points_tuple)
-            and code_points_tuple[i] == to_merge_pair[0]
-            and code_points_tuple[i + 1] == to_merge_pair[1]
-        ):
-            new_code_points_list.append(new_code_point)
-            i += 2
-        else:
-            new_code_points_list.append(code_points_tuple[i])
-            i += 1
-
-    return tuple(new_code_points_list), count

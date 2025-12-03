@@ -1,0 +1,13 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.13, pytest-8.4.1, pluggy-1.6.0 -- /Users/shashanko/Desktop/StandfordCS336/assignment1-basics/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/shashanko/Desktop/StandfordCS336/assignment1-basics
+configfile: pyproject.toml
+plugins: jaxtyping-0.3.2
+collecting ... collected 3 items
+
+tests/test_train_bpe.py::test_train_bpe_speed PASSED
+tests/test_train_bpe.py::test_train_bpe PASSED
+tests/test_train_bpe.py::test_train_bpe_special_tokens PASSED
+
+============================== 3 passed in 0.77s ===============================

@@ -92,6 +92,12 @@ class AdamW(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
     def step(self, closure: Callable | None = None):
+        # Use a global step counter for all parameters in this optimizer
+        if not hasattr(self, "global_step"):
+            self.global_step = 1
+        else:
+            self.global_step += 1
+
         loss = None if closure is None else closure()
         for group in self.param_groups:
             lr = group["lr"]
@@ -101,11 +107,10 @@ class AdamW(torch.optim.Optimizer):
 
             for p in group["params"]:
                 if p.grad is None:
-                    return
+                    continue
 
                 # Retrieve state.
                 state = self.state[p]
-                t = state.get("t", 1)
                 first_moment = state.get("first_moment", 0.0)
                 second_moment = state.get("second_moment", 0.0)
 
@@ -116,15 +121,15 @@ class AdamW(torch.optim.Optimizer):
                 first_moment = b1 * first_moment + (1 - b1) * grad
                 second_moment = b2 * second_moment + (1 - b2) * (grad**2)
 
-                # Compute step size.
+                # Compute step size using the global step
+                t = self.global_step
                 lr_for_time_step = lr * math.sqrt(1 - b2**t) / (1 - b1**t)
 
                 # Update parameters.
                 p.data -= lr_for_time_step * first_moment / (torch.sqrt(second_moment) + eps)
                 p.data = (1 - lr * weight_decay) * p.data
 
-                # Update state.
-                state["t"] = t + 1
+                # Update state, no need to store t per parameter anymore
                 state["first_moment"] = first_moment
                 state["second_moment"] = second_moment
 
