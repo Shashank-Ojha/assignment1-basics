@@ -4,7 +4,6 @@ import multiprocessing
 import heapq
 from cs336_basics.tokenization.bpe_trainer_helpers import (
     read_chunk_and_pretokenize,
-    SPECIAL_TOKENS,
     find_chunk_boundaries,
 )
 
@@ -236,14 +235,3 @@ def train_tokenizer(
         vocab[len(vocab)] = special_token.encode("utf-8")
 
     return vocab, merges
-
-
-def main():
-    # tiny_stores_dataset = "data/swift.txt"
-    tiny_stores_dataset = "data/TinyStoriesV2-GPT4-train.txt"
-    VOCAB_SIZE = 10000
-    vocab, merges = train_tokenizer(tiny_stores_dataset, VOCAB_SIZE, SPECIAL_TOKENS)
-
-
-if __name__ == "__main__":
-    main()

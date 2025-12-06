@@ -165,3 +165,7 @@ cython_debug/
 *.DS_Store
 data/
 profile.stats
+
+tokenized_data/
+training_results_owt_final/
+training_results_ts_final/
