@@ -49,7 +49,7 @@ class RMSNorm(nn.Module):
         self.d_model = d_model
         self.eps = eps
 
-        self.gain = nn.Parameter(torch.randn(d_model))
+        self.gain = nn.Parameter(torch.randn(d_model, device=device))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x has shape (batch_size, seq_len, d_model)
@@ -71,11 +71,11 @@ class SwiGLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
         super().__init__()
 
-        self.w1 = Linear(d_model, d_ff)
-        self.w2 = Linear(d_ff, d_model)
-        self.w3 = Linear(d_model, d_ff)
+        self.w1 = Linear(d_model, d_ff, device=device)
+        self.w2 = Linear(d_ff, d_model, device=device)
+        self.w3 = Linear(d_model, d_ff, device=device)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x has shape (..., d_model)
         lhs = self.w1(x)
         lhs = lhs * torch.sigmoid(lhs)
@@ -102,7 +102,7 @@ class RotaryPositionalEmbedding(nn.Module):
         # This basically takes every theta and represents it in the complex coordinate system as
         # cos(theta) + i sin(theta). The first parameter of torch.polar controls the absolute value:
         # abs⋅cos(angle)+abs⋅sin(angle)⋅i which we set to 1.
-        rotary_complex_coordinates = torch.polar(torch.ones_like(angle), angle)
+        rotary_complex_coordinates = torch.polar(torch.ones_like(angle, device=device), angle)
 
         # We do persistent = False so these matrices aren't stored in the state_dict when
         # saved/loaded. These matrices are cheap to compute and are fully deterministic (independent of training)
@@ -172,8 +172,10 @@ def scaled_dot_product_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tens
 
     attention_matrix = einsum(q, k, "b ... l_q d_k, b ... l_k d_k -> b ... l_q l_k") / math.sqrt(d_k)
 
-    if mask != None:
-        attention_matrix = torch.where(mask, attention_matrix, float("-inf") * torch.ones_like(attention_matrix))
+    if mask is not None:
+        attention_matrix = torch.where(
+            mask, attention_matrix, float("-inf") * torch.ones_like(attention_matrix, device=q.device)
+        )
 
     normalized_softmax = softmax(attention_matrix, -1)
 
@@ -221,7 +223,9 @@ class MultiHeadSelfAttention(nn.Module):
         if self.rope is not None:
             if token_positions is None:
                 # (..., seq_len) + (seq_len,)
-                token_positions = torch.zeros(q.shape[:-1], dtype=int) + torch.arange(0, q.shape[-2])
+                token_positions = torch.zeros(q.shape[:-1], dtype=int, device=q.device) + torch.arange(
+                    0, q.shape[-2], device=q.device
+                )
 
             q = self.rope(q, token_positions)
             k = self.rope(k, token_positions)
@@ -288,8 +292,6 @@ class Transformer(nn.Module):
 
         self.ln = RMSNorm(d_model, self.eps, device=device)
         self.proj = Linear(d_model, vocab_size, device=device)
-
-        pass
 
     def forward(self, x):
         out = self.embedding(x)

@@ -1,15 +1,30 @@
 import torch
 import os
+import pathlib
 import typing
 import numpy.typing as npt
 import numpy as np
 
 
-# Example of loading the data correctly
-# data = np.memmap('train.bin', dtype=np.uint16, mode='r')
+TOKENIZED_DATA_PATH = "tokenized_data"
+CHECKPOINTS_FOLDER = "checkpoints/"
 
-# Now pass 'data' into your function
-# xb, yb = get_batch(data, batch_size=4, context_length=8, device='cuda')
+TINY_STORIES_VOCAB_SIZE = 10_000
+OWT_VOCAB_SIZE = 32_000
+
+
+def load_data(dataset):
+    assert dataset in ["ts", "owt"]
+    if dataset == "ts":
+        train_set = np.memmap(f"{TOKENIZED_DATA_PATH}/TinyStoriesV2-GPT4-train.npy", dtype=np.uint16, mode="r")
+        valid_set = np.memmap(f"{TOKENIZED_DATA_PATH}/TinyStoriesV2-GPT4-valid.npy", dtype=np.uint16, mode="r")
+        vocab_size = TINY_STORIES_VOCAB_SIZE
+    elif dataset == "owt":
+        train_set = np.memmap(f"{TOKENIZED_DATA_PATH}/owt_train.npy", dtype=np.uint16, mode="r")
+        valid_set = np.memmap(f"{TOKENIZED_DATA_PATH}/owt_valid.npy", dtype=np.uint16, mode="r")
+        vocab_size = OWT_VOCAB_SIZE
+
+    return train_set, valid_set, vocab_size
 
 
 def get_batch(x: npt.NDArray, batch_size: int, context_length: int, device: str):
@@ -29,10 +44,25 @@ def get_batch(x: npt.NDArray, batch_size: int, context_length: int, device: str)
 
     y_batch = torch.stack([torch.from_numpy((x[i + 1 : i + 1 + context_length]).astype(np.int64)) for i in ix])
 
-    x_batch = x_batch.to(device)
-    y_batch = y_batch.to(device)
+    if "cuda" in device:
+        # pin_memory=True allows faster transfer to GPU
+        x_batch = x_batch.pin_memory().to(device, non_blocking=True)
+        y_batch = y_batch.pin_memory().to(device, non_blocking=True)
+    else:
+        x_batch = x_batch.to(device)
+        y_batch = y_batch.to(device)
 
     return x_batch, y_batch
+
+
+def create_checkpoints_folder(output_dir: str):
+    """Creates the folder where checkpoints are saved if it doesn't already exist."""
+    output_path = pathlib.Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+
+def get_checkpoint_path(checkpoint_file):
+    return f"{CHECKPOINTS_FOLDER}{checkpoint_file}"
 
 
 def save_checkpoint(
