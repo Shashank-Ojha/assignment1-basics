@@ -3,7 +3,7 @@
 import argparse
 import torch
 
-from cs336_basics.param_defs import LLM_Params, Optimizer_Params
+from cs336_basics.experiments import EXPERIMENTAL_CONFIGS
 from cs336_basics.models import Transformer
 from cs336_basics.loss import AdamW, cross_entropy_loss, clip_gradient, get_lr_cosine_schedule
 from cs336_basics.utils import (
@@ -18,35 +18,10 @@ from cs336_basics.utils import (
 import wandb
 import time
 
-LLM_MINI_PARAMS = LLM_Params(
-    vocab_size=-1,  # set dynamically in the code since it varies based on the dataset
-    context_length=64,
-    num_layers=4,
-    d_model=32,
-    num_heads=4,
-    d_ff=4 * 32,
-    rope_theta=10000,
-)
-OPT_PARAMS = Optimizer_Params(
-    min_lr=1e-2,
-    max_lr=1e-1,
-    warmup_iters=1000,
-    total_iters=10000,
-    betas=(0.9, 0.95),
-    weight_decay=0.9,
-    eps=1e-8,
-    max_norm=1e-2,
-)
-
-
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_NUM_STEPS = 100
 
-TINY_STORIES_VOCAB_SIZE = 10_000
-OWT_VOCAB_SIZE = 32_000
-
-TOKENIZED_DATA_PATH = "tokenized_data"
-
+# Checkpointing interval
 CHECKPOINTS_INTERAVAL_FRACTION = 0.1
 
 # Validation loss logging interval
@@ -54,6 +29,10 @@ LOSS_LOG_INTERVAL_FRACTION = 0.01
 
 # Number of batches to sample for validation loss
 NUM_BATCHES_FOR_VALIDATION_LOSS = 5
+
+DEVICE_MPS = "mps"
+DEVICE_CUDA = "cuda"
+DEVICE_CPU = "cpu"
 
 
 @torch.no_grad()
@@ -74,8 +53,12 @@ def sample_validation_loss(model, valid_set, batch_size, llm_params, num_batches
     return total_loss / num_batches
 
 
-def train(run, start_time, train_set, valid_set, batch_size, llm_params, opt_params, num_steps, checkpoint_file):
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+def train(
+    run, start_time, train_set, valid_set, batch_size, llm_params, opt_params, num_steps, checkpoint_file, device
+):
+    device = DEVICE_CUDA if torch.cuda.is_available() else device
+    if device == DEVICE_CUDA:
+        torch.set_float32_matmul_precision("high")
 
     model = Transformer(
         vocab_size=llm_params.vocab_size,
@@ -87,6 +70,11 @@ def train(run, start_time, train_set, valid_set, batch_size, llm_params, opt_par
         rope_theta=llm_params.rope_theta,
         device=device,
     )
+
+    if device == DEVICE_MPS:
+        model = torch.compile(model, backend="aot_eager")
+    else:
+        model = torch.compile(model)
 
     opt = AdamW(model.parameters(), opt_params.min_lr, opt_params.betas, opt_params.weight_decay, opt_params.eps)
     checkpoint_filepath = get_checkpoint_path(checkpoint_file)
@@ -167,10 +155,10 @@ def main():
     )
 
     parser.add_argument(
-        "--num_steps",
+        "--tokens_to_process",
         type=int,
-        default=DEFAULT_NUM_STEPS,
-        help="Num steps",
+        required=True,
+        help="Num tokens to process",
     )
 
     parser.add_argument(
@@ -178,6 +166,20 @@ def main():
         type=str,
         required=True,
         help="File to save checkpoints (.pt)",
+    )
+
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Config settings to use from experiments.py",
+    )
+
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=DEVICE_CPU,
+        help="Device to use (cpu, cuda, mps)",
     )
 
     parser.add_argument(
@@ -189,8 +191,14 @@ def main():
 
     args = parser.parse_args()
 
+    llm_params, opt_params = EXPERIMENTAL_CONFIGS[args.config]
+
     train_set, valid_set, vocab_size = load_data(args.dataset)
-    LLM_MINI_PARAMS.vocab_size = vocab_size
+    llm_params.vocab_size = vocab_size
+
+    # Num Steps.
+    num_steps = args.tokens_to_process // (args.batch_size * llm_params.context_length)
+    print(f"Running for num steps {num_steps}")
 
     # Start a new wandb run to track this script.
     run = wandb.init(
@@ -204,25 +212,27 @@ def main():
             "architecture": "LLM Debug",
             # General Params
             "dataset": "TinyStories" if args.dataset == "ts" else "OpenWebText",
-            "num_steps": args.num_steps,
+            "tokens_to_process": args.tokens_to_process,
+            "num_steps": num_steps,
             "batch_size": args.batch_size,
             # LLM Params
-            "vocab_size": LLM_MINI_PARAMS.vocab_size,
-            "context_length": LLM_MINI_PARAMS.context_length,
-            "num_layers": LLM_MINI_PARAMS.num_layers,
-            "d_model": LLM_MINI_PARAMS.d_model,
-            "num_heads": LLM_MINI_PARAMS.num_heads,
-            "d_ff": LLM_MINI_PARAMS.d_ff,
-            "rope_theta": LLM_MINI_PARAMS.rope_theta,
+            "vocab_size": llm_params.vocab_size,
+            "context_length": llm_params.context_length,
+            "num_layers": llm_params.num_layers,
+            "d_model": llm_params.d_model,
+            "num_heads": llm_params.num_heads,
+            "d_ff": llm_params.d_ff,
+            "rope_theta": llm_params.rope_theta,
             # Optimizer Params
-            "min_lr": OPT_PARAMS.min_lr,
-            "max_lr": OPT_PARAMS.max_lr,
-            "warmup_iters": OPT_PARAMS.warmup_iters,
-            "total_iters": OPT_PARAMS.total_iters,
-            "betas": OPT_PARAMS.betas,
-            "weight_decay": OPT_PARAMS.weight_decay,
-            "eps": OPT_PARAMS.eps,
-            "max_norm": OPT_PARAMS.max_norm,
+            "min_lr": opt_params.min_lr,
+            "max_lr": opt_params.max_lr,
+            "warmup_iters": opt_params.warmup_iters,
+            "total_iters": opt_params.total_iters,
+            "betas": opt_params.betas,
+            "weight_decay": opt_params.weight_decay,
+            "eps": opt_params.eps,
+            "max_norm": opt_params.max_norm,
+            "default_device": args.device,
         },
     )
 
@@ -234,10 +244,11 @@ def main():
         train_set,
         valid_set,
         args.batch_size,
-        LLM_MINI_PARAMS,
-        OPT_PARAMS,
-        args.num_steps,
+        llm_params,
+        opt_params,
+        num_steps,
         args.checkpoint_file,
+        args.device,
     )
     run.finish()
 

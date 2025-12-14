@@ -203,7 +203,9 @@ class MultiHeadSelfAttention(nn.Module):
             self.rope = RotaryPositionalEmbedding(theta, d_k, max_seq_len, device=device)
 
         self.register_buffer(
-            "causal_mask", torch.tril(torch.full((max_seq_len, max_seq_len), True, dtype=torch.bool)), persistent=False
+            "causal_mask",
+            torch.tril(torch.full((max_seq_len, max_seq_len), True, dtype=torch.bool, device=device)),
+            persistent=False,
         )
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None):
