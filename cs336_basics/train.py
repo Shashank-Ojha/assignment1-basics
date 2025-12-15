@@ -63,6 +63,8 @@ def train(
     if device == DEVICE_CUDA:
         torch.set_float32_matmul_precision("high")
 
+    print(f"device = {device}")
+
     model = Transformer(
         vocab_size=llm_params.vocab_size,
         context_length=llm_params.context_length,
