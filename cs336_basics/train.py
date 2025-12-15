@@ -2,6 +2,9 @@
 
 import argparse
 import torch
+import torch.multiprocessing as mp
+
+mp.set_start_method("spawn", force=True)
 
 from cs336_basics.experiments import EXPERIMENTAL_CONFIGS
 from cs336_basics.models import Transformer
