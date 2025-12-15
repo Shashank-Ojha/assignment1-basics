@@ -56,7 +56,7 @@ def sample_validation_loss(model, valid_set, batch_size, llm_params, num_batches
 def train(
     run, start_time, train_set, valid_set, batch_size, llm_params, opt_params, num_steps, checkpoint_file, device
 ):
-    device = DEVICE_CUDA if torch.cuda.is_available() else device
+    device = DEVICE_CUDA if (device == DEVICE_CUDA and torch.cuda.is_available()) else device
     if device == DEVICE_CUDA:
         torch.set_float32_matmul_precision("high")
 
