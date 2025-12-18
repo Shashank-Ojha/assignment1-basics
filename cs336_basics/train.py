@@ -78,8 +78,8 @@ def train(
 
     if device == DEVICE_MPS:
         model = torch.compile(model, backend="aot_eager")
-    # else:
-    #     model = torch.compile(model)
+    else:
+        model = torch.compile(model)
 
     opt = AdamW(model.parameters(), opt_params.min_lr, opt_params.betas, opt_params.weight_decay, opt_params.eps)
     checkpoint_filepath = get_checkpoint_path(checkpoint_file)
