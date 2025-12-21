@@ -30,6 +30,9 @@ LOSS_LOG_INTERVAL_FRACTION = 0.01
 # Number of batches to sample for validation loss
 NUM_BATCHES_FOR_VALIDATION_LOSS = 5
 
+# Warmup Iters Fraction
+WARM_UP_ITERS_FRACTION = 0.1  # (This is the recommendation based on Google)
+
 DEVICE_MPS = "mps"
 DEVICE_CUDA = "cuda"
 DEVICE_CPU = "cpu"
@@ -108,7 +111,7 @@ def train(
         clip_gradient(model.parameters(), opt_params.max_norm)
         opt.step()
 
-        if (step + 1) % (num_steps * LOSS_LOG_INTERVAL_FRACTION) == 0:
+        if (step + 1) % int(num_steps * LOSS_LOG_INTERVAL_FRACTION) == 0:
             val_loss = sample_validation_loss(
                 model, valid_set, batch_size, llm_params, NUM_BATCHES_FOR_VALIDATION_LOSS, device
             )
@@ -131,7 +134,7 @@ def train(
                 }
             )
 
-        if (step + 1) % (num_steps * CHECKPOINTS_INTERAVAL_FRACTION) == 0:
+        if (step + 1) % int(num_steps * CHECKPOINTS_INTERAVAL_FRACTION) == 0:
             print(f"Saving checkpoint at step: {step + 1}")
             save_checkpoint(model, opt, step, checkpoint_filepath)
 
@@ -190,12 +193,17 @@ def main():
 
     llm_params, opt_params = EXPERIMENTAL_CONFIGS[args.config]
 
+    # Update LLM Params.
     train_set, valid_set, vocab_size = load_data(args.dataset)
     llm_params.vocab_size = vocab_size
 
     # Num Steps.
     num_steps = args.tokens_to_process // (args.batch_size * llm_params.context_length)
     print(f"Running for num steps {num_steps}")
+
+    # Update OPT Params.
+    opt_params.total_iters = num_steps
+    opt_params.warmup_iters = int(WARM_UP_ITERS_FRACTION * num_steps)
 
     # Start a new wandb run to track this script.
     run = wandb.init(

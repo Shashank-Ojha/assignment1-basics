@@ -35,10 +35,10 @@ tiny_llm = LLM_Params(
 
 # Initial params suggested by chatgpt.
 tiny_opt = Optimizer_Params(
-    min_lr=0.0,
-    max_lr=5e-4,
-    warmup_iters=500,
-    total_iters=50_000,
+    min_lr=1e-4,
+    max_lr=5e-3,
+    warmup_iters=500,  # Update: this is set automatically based on num_steps
+    total_iters=50_000,  # Update: this is set automatically based on num_steps
     betas=(0.9, 0.95),
     weight_decay=0.05,
     eps=1e-8,
