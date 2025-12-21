@@ -32,15 +32,17 @@ tiny_llm = LLM_Params(
     d_ff=1344,  # provided (roughly 8/3 * d_mdodel but still multiple of 64)
     rope_theta=10_000,  # provided
 )
+
+# Initial params suggested by chatgpt.
 tiny_opt = Optimizer_Params(
-    min_lr=1e-2,
-    max_lr=1e-1,
-    warmup_iters=1000,
-    total_iters=10000,
+    min_lr=0.0,
+    max_lr=5e-4,
+    warmup_iters=500,
+    total_iters=50_000,
     betas=(0.9, 0.95),
-    weight_decay=0.9,
+    weight_decay=0.05,
     eps=1e-8,
-    max_norm=1e-2,
+    max_norm=1.0,
 )
 
 

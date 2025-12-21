@@ -164,13 +164,6 @@ def main():
     )
 
     parser.add_argument(
-        "--checkpoint_file",
-        type=str,
-        required=True,
-        help="File to save checkpoints (.pt)",
-    )
-
-    parser.add_argument(
         "--config",
         type=str,
         required=True,
@@ -188,10 +181,12 @@ def main():
         "--run_name",
         type=str,
         required=True,
-        help="Name of the run",
+        help="Name of the run. Will also save checkpoints to this filename (.pt)",
     )
 
     args = parser.parse_args()
+    # assert that run_name doesn't contain spaces. It should connect multiple words with "-"/"_"
+    assert args.run_name.replace("_", "").replace("-", "").isalnum(), "run_name shouldn't contain spaces."
 
     llm_params, opt_params = EXPERIMENTAL_CONFIGS[args.config]
 
@@ -235,6 +230,7 @@ def main():
             "eps": opt_params.eps,
             "max_norm": opt_params.max_norm,
             "default_device": args.device,
+            "config_name": args.config,
         },
     )
 
@@ -249,7 +245,7 @@ def main():
         llm_params,
         opt_params,
         num_steps,
-        args.checkpoint_file,
+        args.run_name,  # checkpoint file is just the run name
         args.device,
     )
     run.finish()

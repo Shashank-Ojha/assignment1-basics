@@ -19,6 +19,8 @@ GPT_2_XL_config_extra_context = TranformerConfig(
     vocab_size=50257, context_length=16384, num_layers=48, d_model=1600, num_heads=25
 )
 
+TinyStoreis_config = TranformerConfig(vocab_size=10_000, context_length=256, num_layers=4, d_model=512, num_heads=16)
+
 
 class TransformerAccountant:
     def __init__(self, config, precision_in_bytes=4):
@@ -128,7 +130,9 @@ class TransformerAccountant:
 
         total_dependent_on_batch_size = total_activations * self.precision_in_bytes
 
-        print(f"{total_dependent_on_batch_size:,}B + {total_independent_of_batch_size:,}")
+        print(f"Number of parameters: {total_parameters:,}")
+
+        print(f"Memory Footprint: {total_dependent_on_batch_size:,}B + {total_independent_of_batch_size:,}")
 
 
 if __name__ == "__main__":
@@ -146,6 +150,7 @@ if __name__ == "__main__":
         ("gpt-large", GPT_2_large_config),
         ("gpt-xl", GPT_2_XL_config),
         ("gpt-xl-extra-context", GPT_2_XL_config_extra_context),
+        ("tiny_stories", TinyStoreis_config),
     ]
 
     print()
@@ -156,6 +161,6 @@ if __name__ == "__main__":
         acct = TransformerAccountant(config)
         print(f"----------------- {name} --------------------")
         print(f"Matrix FLOPs required: {acct.get_total_flops_forward_pass():,}")
-        print(acct.total_memory_footprint_formula())
+        acct.total_memory_footprint_formula()
         print("---------------------------------------------")
         print()
