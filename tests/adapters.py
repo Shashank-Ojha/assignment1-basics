@@ -17,6 +17,7 @@ from cs336_basics.models import (
     RMSNorm,
     Block,
     SwiGLU,
+    SiLU,
     RotaryPositionalEmbedding,
     softmax,
     scaled_dot_product_attention,
@@ -676,7 +677,6 @@ def run_load_checkpoint(
     return load_checkpoint(src, model, optimizer)
 
 
-# Not used
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     """Given a tensor of inputs, return the output of applying SiLU
     to each element.
@@ -688,4 +688,5 @@ def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
         Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
         SiLU to each element.
     """
-    raise NotImplementedError
+    silu = SiLU()
+    return silu(in_features)

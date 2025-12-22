@@ -10,6 +10,8 @@ from cs336_basics.loss import AdamW
 from cs336_basics.utils import load_checkpoint, get_checkpoint_path
 from cs336_basics.tokenization.tokenize_helpers import get_tokenizer
 from cs336_basics.tokenization.constants import SPEICAL_TOKEN_EOT
+from cs336_basics.experiments import EXPERIMENTAL_CONFIGS
+
 
 LLM_MINI_PARAMS = LLM_Params(
     vocab_size=-1,  # set dynamically in the code since it varies based on the dataset
@@ -161,13 +163,22 @@ def main():
         help="Top-p for sampling",
     )
 
+    parser.add_argument(
+        "--config",
+        type=str,
+        required=True,
+        help="Config settings to use from experiments.py",
+    )
+
     args = parser.parse_args()
+
+    llm_params, _ = EXPERIMENTAL_CONFIGS[args.config]
 
     tokenizer = get_tokenizer(args.tokenizer_version)
     vocab_size = len(tokenizer.vocab)
-    LLM_MINI_PARAMS.vocab_size = vocab_size
+    llm_params.vocab_size = vocab_size
 
-    model = load_model(LLM_MINI_PARAMS, args.checkpoint_file)
+    model = load_model(llm_params, args.checkpoint_file)
 
     end_of_text_token_id = tokenizer.encode(SPEICAL_TOKEN_EOT)
     assert len(end_of_text_token_id) == 1
@@ -178,7 +189,7 @@ def main():
     generated_tokens = generate_text(
         initial_text,
         model,
-        LLM_MINI_PARAMS.context_length,
+        llm_params.context_length,
         args.max_len,
         args.temperature,
         args.top_p,

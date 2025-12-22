@@ -86,7 +86,19 @@ def load_checkpoint(
 ) -> int:
     full_state = torch.load(src)
 
-    model.load_state_dict(full_state["model_state"])
+    state_dict = full_state["model_state"]
+
+    # Remove "_orig_mod." prefix if present. This is so you can deal with differences in naming when
+    # you do model = torch.compile(model). We will load an uncompiled model.
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith("_orig_mod."):
+            new_state_dict[k[len("_orig_mod.") :]] = v
+        else:
+            new_state_dict[k] = v
+
+    model.load_state_dict(new_state_dict)
+
     optimizer.load_state_dict(full_state["optimizer_state"])
 
     return full_state["iteration"]

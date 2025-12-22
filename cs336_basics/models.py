@@ -85,6 +85,25 @@ class SwiGLU(nn.Module):
         return self.w2(lhs * rhs)
 
 
+class SiLU(nn.Module):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.sigmoid(x)
+
+
+class FFSiLU(nn.Module):
+    def __init__(self, d_model: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super().__init__()
+
+        self.w1 = Linear(d_model, 4 * d_model, device=device)
+        self.w2 = Linear(4 * d_model, d_model, device=device)
+
+        self.silu = SiLU()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x has shape (..., d_model)
+        return self.w2(self.silu(self.w1(x)))
+
+
 class RotaryPositionalEmbedding(nn.Module):
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
         super().__init__()

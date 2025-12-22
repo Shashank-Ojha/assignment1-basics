@@ -1,0 +1,49 @@
+{
+  "os":  "macOS-26.1-arm64-arm-64bit",
+  "python":  "CPython 3.11.13",
+  "startedAt":  "2025-12-21T23:35:49.413430Z",
+  "args":  [
+    "--batch_size",
+    "64",
+    "--tokens_to_process",
+    "40_000_000",
+    "--run_name",
+    "mps_tiny_llm_nope",
+    "--config",
+    "tiny_llm_initial",
+    "--device",
+    "mps"
+  ],
+  "program":  "/Users/shashanko/Desktop/StandfordCS336/assignment1-basics/cs336_basics/train.py",
+  "codePath":  "cs336_basics/train.py",
+  "codePathLocal":  "cs336_basics/train.py",
+  "git":  {
+    "remote":  "git@github.com:Shashank-Ojha/assignment1-basics.git",
+    "commit":  "d90ded0530e40aa3aea8a8614bf64942aed2b054"
+  },
+  "email":  "shashanko@gmail.com",
+  "root":  "/Users/shashanko/Desktop/StandfordCS336/assignment1-basics",
+  "host":  "Shashanks-MacBook-Pro.local",
+  "executable":  "/Users/shashanko/Desktop/StandfordCS336/assignment1-basics/.venv/bin/python3",
+  "cpu_count":  14,
+  "cpu_count_logical":  14,
+  "disk":  {
+    "/":  {
+      "total":  "994662584320",
+      "used":  "632050786304"
+    }
+  },
+  "memory":  {
+    "total":  "25769803776"
+  },
+  "apple":  {
+    "name":  "Apple M4 Pro",
+    "ecpuCores":  4,
+    "pcpuCores":  10,
+    "gpuCores":  20,
+    "memoryGb":  24,
+    "swapTotalBytes":  "8589934592",
+    "ramTotalBytes":  "25769803776"
+  },
+  "writerId":  "79mjhaopb3rdd3s1q40w3diz0h15bno7"
+}
